@@ -5,11 +5,10 @@ from typing import Optional
 import numpy as np
 from numpy.typing import NDArray
 from scipy.interpolate import interp1d
-from tqdm import tqdm
 from h5py import File
 
 from .Composition import Composition
-from .util import Navo
+from .util import Navo, tqdm
 
 
 class KnecRun:

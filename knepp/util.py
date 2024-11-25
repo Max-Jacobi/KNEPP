@@ -1,6 +1,19 @@
 import numpy as np
 from scipy.optimize import curve_fit
 
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(iterator, total, desc="", disable=False):
+        if disable:
+            yield from iterator
+        if desc != "":
+            desc=desc+": "
+        for ii, it in enumerate(iterator):
+            print(f"{desc}{ii+1}/{total}", end="\r")
+            yield it
+        print()
+
 MeV2erg = 1.6022e-6
 sec2day = 1./86400.
 c_light = 2.99792458e10

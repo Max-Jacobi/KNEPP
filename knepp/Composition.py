@@ -4,8 +4,9 @@ import numpy as np
 from h5py import File
 from scipy.sparse import csc_array, coo_matrix, sparray
 from numpy.typing import NDArray
-from tqdm import tqdm
 from multiprocessing import Pool
+
+from .util import tqdm
 
 ################################################################################
 
@@ -176,6 +177,7 @@ class Composition(Sequence):
         with File(self.file_path, "r") as hf:
             for it in tqdm(
                 range(len(self.times)),
+                total=len(self.times),
                 desc=f"Loading Y(A={A}, Z={Z})",
                 ncols=0,
                 leave=False,

@@ -2,10 +2,10 @@ import json
 from functools import lru_cache
 import numpy as np
 from scipy.interpolate import interp1d
-from tqdm import tqdm
 from numpy.typing import NDArray
 
 from .KnecRun import KnecRun
+from .util import tqdm
 
 
 class KnecSim:
