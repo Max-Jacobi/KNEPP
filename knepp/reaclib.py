@@ -234,6 +234,10 @@ class Reaction:
     def is_weak(self) -> bool:
         return self.rwflag == 'w'
 
+    @property
+    def is_reverse(self) -> bool:
+        return self.revflag == 'v'
+
     def __eq__(self, other):
         return (self.reacs == other.reacs
                and self.prods == other.prods
