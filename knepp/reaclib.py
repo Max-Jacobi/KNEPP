@@ -1,10 +1,10 @@
 ################################################################################
 
 import re
+from functools import lru_cache
 import numpy as np
 
-# from .util import tqdm
-from tqdm import tqdm
+from .util import tqdm
 
 ################################################################################
 
@@ -29,6 +29,12 @@ _header_fmt = re.compile(
     r" *$" # Ten trailing spaces
 )
 
+_output_format = (
+    "     {:>5s}{:>5s}{:>5s}{:>5s}{:>5s}{:>5s}        {:4s}{:1s}{:1s}   {:12.5e}"
+    "          \n"
+    "{:13.6e}{:13.6e}{:13.6e}{:13.6e}                      \n"
+    "{:13.6e}{:13.6e}{:13.6e}                                   \n"
+)
 
 ################################################################################
 
@@ -95,9 +101,15 @@ class Reaction:
     ):
         self.chapter = chapter
         self.header = header.strip()
-        nucs, self.label, self.rwflag, self.revflag, self.qval = self._read_header(header)
+        (nucs,
+         self.label,
+         self.rwflag,
+         self.revflag,
+         self.qval) = self._read_header(header)
         self.reacs, self.prods = self._devide_nuclides(nucs, chapter)
+        self._redistribute_chapter_8()
         self.coeffs = self._read_coeffs(coeffs)
+
         self.type = self._get_type()
 
     @staticmethod
@@ -142,8 +154,9 @@ class Reaction:
                 reacs, prods = (r1, r2), (p1, p2, p3)
             case 7, (r1, r2, p1, p2, p3, p4):
                 reacs, prods = (r1, r2), (p1, p2, p3, p4)
-            case 8, (r1, r2, r3, p1, *_):
-                reacs, prods = (r1, r2, r3), (p1, )
+            case 8, (r1, r2, r3, *prods):
+                prods = tuple(filter(lambda p: p != "     ", prods))
+                reacs, prods = (r1, r2, r3), prods
             case 9, (r1, r2, r3, p1, p2, _):
                 reacs, prods = (r1, r2, r3), (p1, p2)
             case 10, (r1, r2, r3, r4, p1, p2):
@@ -191,7 +204,6 @@ class Reaction:
                 return 'nd'
             if proton in self.prods:
                 return 'pd'
-            return 'otherdecay'
 
         if self.chapter == 2:
             if neutron in self.prods:
@@ -200,7 +212,6 @@ class Reaction:
                 return 'gp'
             if alpha in self.prods:
                 return 'ga'
-            return "otherphotodis"
 
         if self.chapter == 4:
             if neutron in self.reacs:
@@ -217,14 +228,32 @@ class Reaction:
             if ejec == 'he4': ejec = 'a'
             if len(type := f"{proj}{ejec}") == 2:
                 return type
-
         return 'other'
+
+    def _redistribute_chapter_8(self):
+        # in the old reaclib format chapter 8 handled both
+        # 3p -> 1p and 3p -> 2p reactions so we might need
+        # to redistribute these
+        if self.chapter == 8 and len(self.prods) == 2:
+            self.chapter = 9
 
     def eval_at_T(self, T: float) -> float:
         a = self.coeffs
         return np.exp(a[0]
                       + sum(a[i] * T ** ((2*i -5)/3) for i in range(1, 6))
                       + a[6]*np.log(T))
+
+    def to_entry(self) -> str:
+        nucs = [nuc.name for nuc in self.reacs + self.prods]
+        nucs += [""] * (6 - len(nucs))
+        return _output_format.format(
+            *nucs,
+            self.label,
+            self.rwflag,
+            self.revflag,
+            self.qval,
+            *self.coeffs
+        )
 
     @property
     def is_decay(self) -> bool:
@@ -244,7 +273,8 @@ class Reaction:
                and self.coeffs == other.coeffs)
 
     def __repr__(self):
-        return f"<Reaction {"+".join(map(str, self.reacs))} -> {"+".join(map(str, self.prods))}>"
+        return (f"<Reaction {"+".join(map(str, self.reacs))}"
+                f" -> {"+".join(map(str, self.prods))}>")
 
     def __str__(self):
         return self.__repr__()
@@ -279,6 +309,13 @@ class Reaclib:
                 coeffs = f.readline() + f.readline()
                 self.reactions.append(Reaction(chapter, header, coeffs))
 
+    @lru_cache
+    def by_type(self, type: str) -> list[Reaction]:
+        return [rr for rr in self.reactions if rr.type == type]
+
+    @lru_cache
+    def by_chapter(self, chapter: int) -> list[Reaction]:
+        return [rr for rr in self.reactions if rr.chapter == chapter]
 
     def __iter__(self):
         return iter(self.reactions)
@@ -288,3 +325,16 @@ class Reaclib:
 
     def __len__(self):
         return len(self.reactions)
+
+    def write_to_file(self, path: str, format: str = 'skynet'):
+        chapters = np.unique([rr.chapter for rr in self.reactions])
+        with open(path, mode='w') as rf:
+            for chapter in chapters:
+                if format != 'skynet':
+                    rf.write(f"{chapter:<2d}                                                                        \n")
+                    rf.write("                                                                          \n")
+                    rf.write("                                                                          \n")
+                for rr in self.by_chapter(chapter):
+                    if format == 'skynet':
+                        rf.write(f"{chapter:<2d}                                                                        \n")
+                    rf.write(rr.to_entry())
