@@ -4,7 +4,7 @@ import numpy as np
 from scipy.interpolate import interp1d
 from numpy.typing import NDArray
 
-from .KnecRun import KnecRun
+from .knecrun import KnecRun
 from .util import tqdm
 
 

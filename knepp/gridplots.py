@@ -12,7 +12,7 @@ from matplotlib.collections import QuadMesh
 from matplotlib.colorbar import Colorbar
 
 from .util import print_time, c_light
-from .KnecSim import KnecSim
+from .knecsim import KnecSim
 
 class KnecFigure:
     plots: list["Plot"]

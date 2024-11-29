@@ -7,7 +7,7 @@ from numpy.typing import NDArray
 from scipy.interpolate import interp1d
 from h5py import File
 
-from .Composition import Composition
+from .composition import Composition
 from .util import Navo, tqdm
 
 
