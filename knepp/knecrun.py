@@ -33,7 +33,15 @@ class KnecRun:
         self.nice_name = self.name.replace("_", " ")
         self.bitant = bitant
         self.verbose = verbose
-        self.tmax = self.load_xg("radioactive_power")[0].max()
+        for xg in "radioactive_power mass radius".split():
+            try:
+                self.tmax = self.load_xg(xg)[0].max()
+                break
+            except FileNotFoundError:
+                continue
+        else:
+            raise FileNotFoundError(f"Could not find any xg or h5 files for initialization")
+
         self._comp = None
 
         self.dm = np.loadtxt(
@@ -66,6 +74,7 @@ class KnecRun:
     def load_xg(
         self, file_name: str
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+
         if os.path.isfile(f"{self.dpath}/{file_name}.h5"):
             return self.load_h5(file_name)
 
@@ -139,6 +148,51 @@ class KnecRun:
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         t, data = self.load_xg(file_name)
         return t, self.mass_average(data)
+
+    def get_rest_heating_loc(self):
+        time, qtot = self.load_xg("radioactive_power")
+        qrest = qtot - sum(self.load_xg(f"radioactive_power_{sp}")[1]
+                  for sp in "alphas els_pos gammas nus".split())
+        return time, qrest
+
+    def get_rest_heating(self):
+        time, qq = self.get_rest_heating_loc()
+        return time, self.mass_average(qq)
+
+
+    def get_rest_therm_heating_loc(self, heating_fac=0.8):
+        time, qq = self.get_rest_heating_loc()
+        return time, qq*heating_fac
+
+    def get_rest_therm_heating(self, heating_fac=0.8):
+        time, qt = self.get_rest_therm_heating_loc(heating_fac)
+        return time, self.mass_average(qt)
+
+    def get_consv_therm_heating_loc(self):
+        time = self.load_xg("radioactive_power_alphas")[0]
+        qs = [self.load_xg(f"radioactive_power_{sp}")[1]
+              for sp in "alphas els_pos gammas".split()]
+        fs = [self.load_xg(f"f{sp}")[1] for sp in "alphas electrons gamma".split()]
+
+        qq = sum(q*f for q,f in zip(qs, fs))
+
+        return time, qq
+
+    def get_consv_therm_heating(self):
+        time, qt = self.get_consv_therm_heating_loc();
+        return time, self.mass_average(qt)
+
+    def get_consv_lum(self):
+        tq, qt = self.get_consv_therm_heating_loc()
+        tph, ph_idx = self.load_dat("index_photo")
+        ph_idx = np.interp(tq, tph, ph_idx).round().astype(int) - 1
+
+        if len(qt) == len(ph_idx)-1:
+            ph_idx = ph_idx[:-1]
+
+        for it, iph in enumerate(ph_idx):
+            qt[it, :iph] = 0
+        return tq, np.sum(qt * self.dm[None, :], axis=1)
 
     def get_AZ_heating_loc(
         self,

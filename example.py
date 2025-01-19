@@ -56,7 +56,7 @@ def make_plot(kfig, ax, sim):
 
     # heating rate
 
-    # define custom Plot object based od XGPlot plot rho * heating_rate
+    # define custom Plot object based on XGPlot to plot rho * heating_rate
     class HeatPlot(kp.XGPlot):
         def __init__(self, *args, **kwargs):
             # normally init requires file_name but we set it in load_data

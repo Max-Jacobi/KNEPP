@@ -2,6 +2,7 @@
 
 import re
 from functools import lru_cache
+from typing import Iterable
 import numpy as np
 
 from .util import tqdm
@@ -20,7 +21,7 @@ _fmt = r"([-+ ]\d\.\d{6}[eE][-+]\d{2})"
 _coeff_fmt = re.compile(4*_fmt + " *\n" + 3*_fmt + " *\n")
 
 _header_fmt = re.compile(
-    r"^ {5}" # Five spaces
+    r"^ *" # Five spaces
     r"(.{5})(.{5})(.{5})(.{5})(.{5})(.{5}) {8}"   # 6 nuclides, each 5 characters
     r"(.{4})" # Set label (4 characters)
     r"([nrsw ])" # Resonance/weak flag (1 character)
@@ -97,10 +98,10 @@ class Reaction:
         self,
         chapter: int,
         header: str,
-        coeffs: str,
+        coeffs: (str, Iterable[float]),
     ):
         self.chapter = chapter
-        self.header = header.strip()
+        self.header = header
         (nucs,
          self.label,
          self.rwflag,
@@ -108,7 +109,11 @@ class Reaction:
          self.qval) = self._read_header(header)
         self.reacs, self.prods = self._devide_nuclides(nucs, chapter)
         self._redistribute_chapter_8()
-        self.coeffs = self._read_coeffs(coeffs)
+
+        if isinstance(coeffs, str):
+            self.coeffs = self._read_coeffs(coeffs)
+        else:
+            self.coeffs = np.array(coeffs, dtype=float)
 
         self.type = self._get_type()
 
@@ -127,7 +132,6 @@ class Reaction:
         """
         match = _header_fmt.match(header)
         if match is None:
-            breakpoint()
             raise ValueError(f"Invalid reaction header: {header}")
         *nucs, labl, wflg, rflg = match.groups()[:-1]
         qval = float(match.group(10))
@@ -230,6 +234,9 @@ class Reaction:
                 return type
         return 'other'
 
+    def copy(self) -> "Reaction":
+        return Reaction(self.chapter, self.header, self.coeffs)
+
     def _redistribute_chapter_8(self):
         # in the old reaclib format chapter 8 handled both
         # 3p -> 1p and 3p -> 2p reactions so we might need
@@ -286,8 +293,6 @@ class Reaclib:
     def __init__(self, path: str):
         self.reactions = []
         chapter = 1
-        with open(path, 'r') as f:
-            n_lines = len(f.readlines())
 
         with open(path, 'r') as f:
             # for _ in tqdm(range(n_lines),
@@ -308,6 +313,11 @@ class Reaclib:
                 header = line
                 coeffs = f.readline() + f.readline()
                 self.reactions.append(Reaction(chapter, header, coeffs))
+
+    def copy(self) -> "Reaclib":
+        new = Reaclib.__new__(Reaclib)
+        new.reactions = [r.copy() for r in self.reactions]
+        return new
 
     @lru_cache
     def by_type(self, type: str) -> list[Reaction]:
@@ -336,5 +346,5 @@ class Reaclib:
                     rf.write("                                                                          \n")
                 for rr in self.by_chapter(chapter):
                     if format == 'skynet':
-                        rf.write(f"{chapter:<2d}                                                                        \n")
+                        rf.write(f"{chapter:d}\n")
                     rf.write(rr.to_entry())

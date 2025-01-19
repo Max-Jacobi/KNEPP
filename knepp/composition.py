@@ -158,40 +158,61 @@ class Composition(Sequence):
         return AZ(self)
 
     def spec_abundance(
-        self, A: int, Z: int, reload: bool = False
+        self, A: int, Z: int,
+        reload: bool = False,
+        ncpu: int = 1,
     ) -> NDArray[np.float64]:
 
         dsetname = f"specific_Y/A{A:03d}_Z{Z:03d}"
         with File(self.file_path, "r") as hf:
             if dsetname in hf and not reload:
                 return np.array(hf[dsetname])
-        yy = self._spec_abundance(A, Z)
+        yy = self._spec_abundance(A, Z, ncpu=ncpu)
         with File(self.file_path, "a") as hf:
             dset = hf.require_dataset(dsetname, shape=yy.shape, dtype=yy.dtype)
             dset[...] = yy
         return yy
 
-    def _spec_abundance(self, A: int, Z: int) -> NDArray[np.float64]:
+    def _spec_abundance(self, A: int, Z: int, ncpu: int = 1) -> NDArray[np.float64]:
         i_AZ = np.where((self._A == A) & (self._Z == Z))[0]
+
+        def verbose(its):
+            return tqdm(its, total=len(self.times),
+                desc=f"Loading Y(A={A}, Z={Z})", ncols=0,
+                leave=False, disable=not self.verbose,)
+
         yy = np.zeros((len(self.times), len(self.mass_shells)))
-        with File(self.file_path, "r") as hf:
-            for it in tqdm(
-                range(len(self.times)),
-                total=len(self.times),
-                desc=f"Loading Y(A={A}, Z={Z})",
-                ncols=0,
-                leave=False,
-                disable=not self.verbose,
-            ):
-                for ish in self.mass_shells:
-                    dset_name = f"shell_{ish:04d}/it_{it+1:06d}/iAZ"
-                    if dset_name not in hf:
-                        continue
-                    _iAZ = np.array(hf[dset_name]) - 1
-                    if np.any(msk := _iAZ == i_AZ):
-                        yy[it, ish - 1] = hf[f"shell_{ish:04d}/it_{it+1:06d}/Y"][msk]
+
+        if ncpu == 1:
+            with File(self.file_path, "r") as hf:
+                for it in verbose(range(len(self.times))):
+                    yy[it] = Composition._load_y(hf, it, len(self.mass_shells), i_AZ)
+        else:
+            args = [(it, self.file_path, len(self.mass_shells), i_AZ)
+                    for it in range(len(self.times))]
+            with Pool(ncpu) as pp:
+                for y, it in verbose(pp.imap_unordered(Composition._work, args)):
+                    yy[it] = y
         return yy
 
+    @staticmethod
+    def _load_y(hf, it, n_shells, i_AZ):
+        yy = np.zeros(n_shells)
+        for ii in range(n_shells):
+            ish = ii + 1
+            grp_name = f"shell_{ish:04d}/it_{it+1:06d}"
+            if f"{grp_name}/iAZ" not in hf:
+                continue
+            _iAZ = np.array(hf[f"{grp_name}/iAZ"]) - 1
+            if np.any(msk := _iAZ == i_AZ):
+                yy[ii] = hf[f"{grp_name}/Y"][msk]
+        return yy
+
+    @staticmethod
+    def _work(args):
+        it, fp, n_shells, i_AZ = args
+        with File(fp, "r") as hf:
+            return Composition._load_y(hf, it, n_shells, i_AZ), it
 
 class OldFormat(Sequence):
     def __init__(self, comp):
