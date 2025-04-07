@@ -157,6 +157,19 @@ class Composition(Sequence):
     def AZ(self):
         return AZ(self)
 
+    def iso_abundance_at_time(
+        self, A: int, Z: int,
+        time: float,
+        reload: bool = False,
+    ) -> NDArray[np.float64]:
+        it = self.times.searchsorted(time)
+        dsetname = f"specific_Y/A{A:03d}_Z{Z:03d}"
+        with File(self.file_path, "r") as hf:
+            if dsetname in hf and not reload:
+                return np.array(hf[dsetname])[it]
+            i_AZ = np.where((self._A == A) & (self._Z == Z))[0]
+            return Composition._load_y(hf, it, len(self.mass_shells), i_AZ)
+
     def spec_abundance(
         self, A: int, Z: int,
         reload: bool = False,

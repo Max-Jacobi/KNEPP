@@ -13,7 +13,6 @@ _elnames = ("n h he li be b c n o f ne na mg al si p s cl ar k "
             "ca sc ti v cr mn fe co ni cu zn ga ge as se br kr rb sr y "
             "zr nb mo tc ru rh pd ag cd in sn sb te i xe cs ba la ce pr "
             "nd pm sm eu gd tb dy ho er tm yb lu hf ta w re os ir pt au "
-
             "hg tl pb bi po at rn fr ra ac th pa u np pu am cm bk cf es "
             "fm md no lr rf db sg bh hs mt ds rg cn nh fl mc lv ts og").split()
 
@@ -74,6 +73,11 @@ class Nuclide:
                 raise ValueError(f"Error: {self.name} is not a valid nuclide name.")
 
         self.N = self.A - self.Z
+
+    @classmethod
+    def from_AZ(cls, A: int, Z: int):
+        el = _elnames[Z]
+        return cls(f"{el}{A}")
 
     def __eq__(self, other):
         return (self.A == other.A) and (self.Z == other.Z)
@@ -318,6 +322,11 @@ class Reaclib:
         new = Reaclib.__new__(Reaclib)
         new.reactions = [r.copy() for r in self.reactions]
         return new
+
+    @lru_cache
+    def by_target(self, target: str) -> list[Reaction]:
+        nucl = Nuclide(target)
+        return [rr for rr in self.reactions if nucl in rr.reacs]
 
     @lru_cache
     def by_type(self, type: str) -> list[Reaction]:

@@ -40,7 +40,7 @@ class KnecRun:
             except FileNotFoundError:
                 continue
         else:
-            raise FileNotFoundError(f"Could not find any xg or h5 files for initialization")
+            raise FileNotFoundError(f"Could not find any xg or h5 files for initialization in {self.dpath}")
 
         self._comp = None
 
@@ -135,7 +135,9 @@ class KnecRun:
     ) -> NDArray[np.float64]:
         if self.comp is None:
             raise ValueError(f"No composition data available for {self}")
-        return interp1d(self.comp.times, self.comp.spec_abundance(A, Z), axis=0)(time)
+        if isinstance(time, np.ndarray):
+            return interp1d(self.comp.times, self.comp.spec_abundance(A, Z), axis=0)(time)
+        return self.comp.iso_abundance_at_time(A, Z, time)
 
     def mass_average(self, data: NDArray[np.float64]) -> NDArray[np.float64]:
         assert (
@@ -148,6 +150,13 @@ class KnecRun:
     ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
         t, data = self.load_xg(file_name)
         return t, self.mass_average(data)
+
+    def load_mass_avg_therm(
+        self, file_name: str, therm: str,
+    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
+        t, data = self.load_xg(file_name)
+        _, fth = self.load_xg(therm)
+        return t, self.mass_average(data*fth)
 
     def get_rest_heating_loc(self):
         time, qtot = self.load_xg("radioactive_power")
@@ -181,6 +190,19 @@ class KnecRun:
     def get_consv_therm_heating(self):
         time, qt = self.get_consv_therm_heating_loc();
         return time, self.mass_average(qt)
+
+    def get_photo_weight(self, time):
+        tph, ph_idx = self.load_dat("index_photo")
+        time = np.atleast_1d(time)
+        ph_frac = np.interp(time, tph, ph_idx)
+        ph_idx = ph_frac.astype(int)
+        d_border = ph_frac - ph_idx
+
+        weight = np.zeros((len(time), self.imax))
+        for it, iph in enumerate(ph_idx):
+            weight[it, iph:] = 1
+            weight[it, iph] = d_border[it]
+        return np.squeeze(weight)
 
     def get_consv_lum(self):
         tq, qt = self.get_consv_therm_heating_loc()
@@ -227,9 +249,12 @@ class KnecRun:
             perc_tot += perc
             if filename == "neutrinos":
                 continue
-            ft += perc * self.load_at_time(self.comp.times, filename)
-        assert perc_tot <= 1.0
-        ft += (1 - perc_tot) * 0.5
+            if isinstance(filename, str):
+                ft += perc * self.load_at_time(self.comp.times, filename)
+            else:
+                ft += perc * filename
+        assert np.isclose(perc_tot, 1.0)
+        # ft += (1 - perc_tot) * 0.5
         return self.comp.times, qf * ft
 
     def get_AZ_therm_heating(
@@ -296,13 +321,28 @@ class KnecRun:
         L = self.get_AZ_lum(1, 0, q_n / tau_n, **kwargs)[1]
         return self.comp.times, L
 
-    def get_photosphere_mass(self):
+    def get_iso_mass(self, **kwargs):
+        yy = self.comp.spec_abundance(**kwargs)
+        return self.comp.times, (yy*self.dm).sum(axis=1)
+
+    def get_outof_photosphere_mass(self):
         tph, ph_idx = self.load_dat("index_photo")
         tph, ph_idx = tph[1:], ph_idx[1:].astype(int) - 1
         mass = np.zeros((len(tph), self.imax))
         for it, iph in enumerate(ph_idx):
-            mass[it, :iph] = self.dm[:iph]
+            mass[it, iph:] = self.dm[iph:]
         return tph, mass.sum(axis=1)
+
+    def get_outof_photosphere_iso_mass(self, **kwargs):
+        tph, ph_idx = self.load_dat("index_photo")
+        tph, ph_idx = tph[1:], ph_idx[1:].astype(int) - 1
+        mass = np.zeros((len(tph), self.imax))
+        for it, iph in enumerate(ph_idx):
+            mass[it, iph:] = self.dm[iph:]
+        yy = self.comp.spec_abundance(**kwargs)
+        yy = interp1d(self.comp.times, yy, axis=0)(tph)
+        return tph, (yy*mass).sum(axis=1)
+
 
     def export_trajectory(self, path, ish, prepend_homol_T=0.0):
         from .EOS import temp_from_entr, rho_from_entr
@@ -369,13 +409,27 @@ class KnecRun:
             header="time:s rad:cm dens temp:K ye",
         )
 
+    @lru_cache(maxsize=26)
+    def get_abundance(self, time: float, outof_photo=False):
+        it = self.comp.times.searchsorted(time)
+        y_f = self.comp.AZ[it]
+        dm = self.dm[:, None, None]
+        if outof_photo:
+            phmask = self.get_photo_mask(time)
+            dm *= phmask[:, None, None]
+        y_f *= dm
+        return y_f.sum(axis=0) / dm.sum()
+
+    @lru_cache(maxsize=26)
     def get_finab(self):
         y_f = self.comp.AZ[-1]
         y_f *= self.dm[:, None, None]
         return y_f.sum(axis=0) / self.dm.sum()
 
+    @lru_cache(maxsize=26)
     def get_finabsum(self):
         return self.get_finab().sum(axis=1)
 
+    @lru_cache(maxsize=26)
     def get_finabelem(self):
         return self.get_finab().sum(axis=0)
