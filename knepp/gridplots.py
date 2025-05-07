@@ -409,6 +409,12 @@ class PhotospherePlot(SimPlot):
             self.r_photo = self.sim.get_at_time(time, 'vel', bitant=False)[i_ph]
             self.r_photo /= c_light
 
+        dth = self.theta[1] - self.theta[0]
+        self.theta = np.repeat(self.theta, 2)
+        self.theta += np.tile([-dth/2, dth/2], 26)
+        self.theta[-1] -= dth/2
+        self.r_photo = np.repeat(self.r_photo, 2, axis=1)
+
         self.li, = self.ax.plot(self.theta, self.r_photo[0], **self.kwargs)
         return [self.li]
 
