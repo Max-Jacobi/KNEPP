@@ -5,6 +5,7 @@ from scipy.interpolate import interp1d
 from numpy.typing import NDArray
 
 from .knecrun import KnecRun
+from .gridplots import grid_plot
 from .util import tqdm
 
 
@@ -158,6 +159,8 @@ class KnecSim:
             data = data.swapaxes(0, 1)  # bring time to the front
         return data
 
+    def plot_grid(self, *args, **kwargs):
+        return grid_plot(sim=self, *args, **kwargs)
 
 class KnecSection:
     md: dict

@@ -11,6 +11,12 @@ from .composition import Composition
 from .util import Navo, tqdm
 
 
+_bands =["GEMINI_u", "GEMINI_g", "GEMINI_r", "GEMINI_i", "GEMINI_z",
+        "GEMINI_J", "GEMINI_H", "GEMINI_Ks",
+        "CTIO_B", "CTIO_V", "CTIO_R", "CTIO_I", "CTIO_J", "CTIO_H", "CTIO_K",
+        "CTIO_u", "CTIO_g", "CTIO_r", "CTIO_i", "CTIO_z", "CTIO_Y"]
+
+
 class KnecRun:
 
     color: Optional[str] = None
@@ -105,9 +111,12 @@ class KnecRun:
         return times, data
 
     def load_dat(
-        self, file_name: str
-    ) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
-        t, d = np.loadtxt(f"{self.dpath}/{file_name}.dat", usecols=(0, 1), unpack=True)
+        self, file_name: str,
+        **kwargs,
+    ) -> tuple[NDArray[np.float64], (NDArray[np.float64] | tuple[NDArray[np.float64], ...])]:
+        t, *d = np.loadtxt(f"{self.dpath}/{file_name}.dat", unpack=True, **kwargs)
+        if len(d) == 1:
+            d = d[0]
         return t, d
 
     def load_h5(self, file_name) -> tuple[NDArray[np.float64], NDArray[np.float64]]:
@@ -135,9 +144,18 @@ class KnecRun:
     ) -> NDArray[np.float64]:
         if self.comp is None:
             raise ValueError(f"No composition data available for {self}")
-        if isinstance(time, np.ndarray):
+        if isinstance(time, np.ndarray) and len(time) > 1:
             return interp1d(self.comp.times, self.comp.spec_abundance(A, Z), axis=0)(time)
+        if isinstance(time, np.ndarray):
+            return self.comp.iso_abundance_at_time(A, Z, time[0])[None,:]
         return self.comp.iso_abundance_at_time(A, Z, time)
+
+    @lru_cache
+    def get_flux(self, band: str):
+        ib = _bands.index(band)+1
+        t, mag = self.load_dat("Magnitude_KNEC", skiprows=2, usecols=(0, ib))
+        flux = 10.0**(-mag/2.5)
+        return t, flux
 
     def mass_average(self, data: NDArray[np.float64]) -> NDArray[np.float64]:
         assert (
@@ -332,6 +350,23 @@ class KnecRun:
         for it, iph in enumerate(ph_idx):
             mass[it, iph:] = self.dm[iph:]
         return tph, mass.sum(axis=1)
+
+    def get_outof_photosphere_dm(self, time: float):
+        tph, ph_idx = self.load_dat("index_photo")
+        ph_idx = np.interp(time, tph, ph_idx)-1
+        dm = self.dm.copy()
+        dm[:int(ph_idx)] = 0
+        dm[ph_idx] *= 1 + int(ph_idx) - ph_idx
+        return dm
+
+    def integrate_outof_photosphere(self, filename: str):
+        tph, ph_idx = self.load_dat("index_photo")
+        td, data = self.load_xg(filename)
+        ph_idx = np.interp(td, tph, ph_idx).astype(int) - 1
+        mass = np.zeros((len(td), self.imax))
+        for it, iph in enumerate(ph_idx):
+            mass[it, iph:] = self.dm[iph:]
+        return td, (mass * data).sum(axis=1)
 
     def get_outof_photosphere_iso_mass(self, **kwargs):
         tph, ph_idx = self.load_dat("index_photo")

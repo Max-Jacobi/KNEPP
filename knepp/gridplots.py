@@ -1,4 +1,4 @@
-from typing import Callable, Iterable
+from typing import Callable, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 import numpy as np
@@ -12,7 +12,9 @@ from matplotlib.collections import QuadMesh
 from matplotlib.colorbar import Colorbar
 
 from .util import print_time, c_light
-from .knecsim import KnecSim
+
+if TYPE_CHECKING:
+    from .knecsim import KnecSim
 
 class KnecFigure:
     plots: list["Plot"]
@@ -84,7 +86,7 @@ class Plot(ABC):
 class SimPlot(Plot, ABC):
     def __init__(
         self,
-        sim: KnecSim,
+        sim: "KnecSim",
         t0: (float | None) = None,
         loc: str = 'top right',
         *args, **kwargs,
@@ -417,8 +419,30 @@ class PhotospherePlot(SimPlot):
         return [self.li]
 
 
+################################################################################
+
+def grid_plot(
+    plot_func: Plot = XGPlot,
+    time: float = 0,
+    ax: (plt.Axes | None) = None,
+    radial_coord: str = 'r/t+tsim',
+    radial_range: (float, float) = (0, .8),
+    display_time=True,
+    **kwargs):
+    if ax is None:
+        fig, ax = plt.subplots(subplot_kw={'projection': 'polar'})
+    else:
+        fig = ax.get_figure()
+
+    rad = np.linspace(*radial_range, 300)
+    kf = KnecFigure(fig, time=np.array([time]), rad=rad,
+                       radial_coord=radial_coord, display_time=display_time)
+    plot = plot_func(fig=kf, ax=ax, **kwargs)
+    kf.plot_data(time=time)
+    return kf, plot
 
 ################################################################################
+
 
 def powerlaw(exponent: float) -> Callable:
     def scale(time, levels:tuple[float, ...]) -> tuple[float, ...]:

@@ -1,10 +1,12 @@
 ################################################################################
+from functools import lru_cache
 from collections.abc import Sequence
+from multiprocessing import Pool
+
 import numpy as np
 from h5py import File
 from scipy.sparse import csc_array, coo_matrix, sparray
 from numpy.typing import NDArray
-from multiprocessing import Pool
 
 from .util import tqdm
 
@@ -157,6 +159,7 @@ class Composition(Sequence):
     def AZ(self):
         return AZ(self)
 
+    @lru_cache
     def iso_abundance_at_time(
         self, A: int, Z: int,
         time: float,
