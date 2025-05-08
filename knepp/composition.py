@@ -173,6 +173,24 @@ class Composition(Sequence):
             i_AZ = np.where((self._A == A) & (self._Z == Z))[0]
             return Composition._load_y(hf, it, len(self.mass_shells), i_AZ)
 
+    def elem_abundance(
+        self, Z: int,
+        reload: bool = False,
+        ncpu: int = 1,
+    ) -> NDArray[np.float64]:
+        dsetname = f"elem_Y/Z{Z:03d}"
+        with File(self.file_path, "r") as hf:
+            if dsetname in hf and not reload:
+                return np.array(hf[dsetname])
+        yy = self._elem_abundance(Z, ncpu=ncpu)
+        with File(self.file_path, "a") as hf:
+            dset = hf.require_dataset(dsetname, shape=yy.shape, dtype=yy.dtype)
+            dset[...] = yy
+        return yy
+
+    def _elem_abundance(self, Z: int, ncpu: int = 1) -> NDArray[np.float64]:
+        raise RuntimeError("Calculating elemental abundances not yet implemented")
+
     def spec_abundance(
         self, A: int, Z: int,
         reload: bool = False,

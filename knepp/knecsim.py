@@ -159,6 +159,33 @@ class KnecSim:
             data = data.swapaxes(0, 1)  # bring time to the front
         return data
 
+    def get_finab(self):
+        yy = 0
+        mm = 0
+        for sec in self.sections:
+            y = sec.get_finab()
+            yy += sec.mass*y
+            mm += sec.mass
+        return yy/mm
+
+    def get_finabsum(self):
+        yy = 0
+        mm = 0
+        for sec in self.sections:
+            y = sec.get_finabsum()
+            yy += sec.mass*y
+            mm += sec.mass
+        return yy/mm
+
+    def get_finabelem(self):
+        yy = 0
+        mm = 0
+        for sec in self.sections:
+            y = sec.get_finabelem()
+            yy += sec.mass*y
+            mm += sec.mass
+        return yy/mm
+
     def plot_grid(self, *args, **kwargs):
         return grid_plot(sim=self, *args, **kwargs)
 

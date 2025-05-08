@@ -16,6 +16,9 @@ _bands =["GEMINI_u", "GEMINI_g", "GEMINI_r", "GEMINI_i", "GEMINI_z",
         "CTIO_B", "CTIO_V", "CTIO_R", "CTIO_I", "CTIO_J", "CTIO_H", "CTIO_K",
         "CTIO_u", "CTIO_g", "CTIO_r", "CTIO_i", "CTIO_z", "CTIO_Y"]
 
+_zs_lan = [57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71]
+_zs_act = [89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103]
+
 
 class KnecRun:
 
@@ -339,9 +342,19 @@ class KnecRun:
         L = self.get_AZ_lum(1, 0, q_n / tau_n, **kwargs)[1]
         return self.comp.times, L
 
-    def get_iso_mass(self, **kwargs):
+    def get_iso_y(self, **kwargs):
         yy = self.comp.spec_abundance(**kwargs)
-        return self.comp.times, (yy*self.dm).sum(axis=1)
+        return self.comp.times, (yy*self.weights).sum(axis=1)
+
+    def get_elem_y(self, **kwargs):
+        yy = self.comp.elem_abundance(**kwargs)
+        return self.comp.times, (yy*self.weights).sum(axis=1)
+
+    def get_lan_y(self, **kwargs):
+        return self.comp.times, sum(self.get_elem_y(Z=z, **kwargs)[1] for z in _zs_lan)
+
+    def get_act_y(self, **kwargs):
+        return self.comp.times, sum(self.get_elem_y(Z=z, **kwargs)[1] for z in _zs_act)
 
     def get_outof_photosphere_mass(self):
         tph, ph_idx = self.load_dat("index_photo")
@@ -461,10 +474,10 @@ class KnecRun:
         y_f *= self.dm[:, None, None]
         return y_f.sum(axis=0) / self.dm.sum()
 
-    @lru_cache(maxsize=26)
+    @lru_cache
     def get_finabsum(self):
         return self.get_finab().sum(axis=1)
 
-    @lru_cache(maxsize=26)
+    @lru_cache
     def get_finabelem(self):
         return self.get_finab().sum(axis=0)
